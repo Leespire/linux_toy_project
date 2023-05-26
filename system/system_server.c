@@ -1,3 +1,5 @@
+#include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/prctl.h>
 #include <signal.h>
@@ -10,6 +12,21 @@
 #include <web_server.h>
 
 static int toy_timer = 0;
+
+static void timer_expire_signal_handler()
+{
+    toy_timer++;
+}
+
+void set_periodic_timer(long sec_delay, long usec_delay)
+{
+	struct itimerval itimer_val = {
+		 .it_interval = { .tv_sec = sec_delay, .tv_usec = usec_delay },
+		 .it_value = { .tv_sec = sec_delay, .tv_usec = usec_delay }
+    };
+
+	setitimer(ITIMER_REAL, &itimer_val, (struct itimerval*)0);
+}
 
 int posix_sleep_ms(unsigned int timeout_ms)
 {
@@ -27,13 +44,21 @@ int system_server()
     struct sigaction  sa;
     struct sigevent   sev;
     timer_t *tidlist;
+    int retcode;
+    pthread_t watchdog_thread_tid, monitor_thread_tid, disk_service_thread_tid, camera_service_thread_tid;
 
     printf("나 system_server 프로세스!\n");
 
     /* 5초 타이머를 만들어 봅시다. */
+    signal(SIGALRM, timer_expire_signal_handler);
+    /* 5초 타이머 등록 */
+    set_periodic_timer(5, 0);
 
+    /* watchdog, monitor, disk_service, camera_service 스레드를 생성한다. */
+
+    printf("system init done.  waiting...");
     while (1) {
-        posix_sleep_ms(5000);
+        sleep(1);
     }
 
     return 0;
