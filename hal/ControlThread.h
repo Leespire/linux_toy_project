@@ -10,7 +10,6 @@ public:
 public:
     // 사진 찍는 메소드
     int takePicture();
-    int dump();
 
 private:
 
