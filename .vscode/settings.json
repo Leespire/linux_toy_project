@@ -12,7 +12,9 @@
         "initializer_list": "c",
         "utility": "c",
         "stdint.h": "c",
-        "sysmacros.h": "c"
+        "sysmacros.h": "c",
+        "dirent.h": "c",
+        "dump_state.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

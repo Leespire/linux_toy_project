@@ -25,6 +25,7 @@
 #include <camera_HAL.h>
 #include <toy_message.h>
 #include <shared_memory.h>
+// #include <dump_state.h>
 
 #define BUF_LEN 1024
 #define TOY_TEST_FS "./fs"
@@ -126,6 +127,7 @@ void *watchdog_thread(void* arg)
 }
 
 #define SENSOR_DATA 1
+#define DUMP_STATE 2
 
 void *monitor_thread(void* arg)
 {
@@ -150,40 +152,47 @@ void *monitor_thread(void* arg)
             printf("sensor info: %d\n", the_sensor_info->press);
             printf("sensor humidity: %d\n", the_sensor_info->humidity);
             toy_shm_detach(the_sensor_info);
+        } else if (msg.msg_type == DUMP_STATE) {
+            // 여기에 dumpstate를 구현해 주세요.
+            // dumpstate();
+        } else {
+            printf("monitor_thread: unknown message. xxx\n");
         }
     }
 
     return 0;
 }
 
-static void             /* Display information from inotify_event structure */
-displayInotifyEvent(struct inotify_event *i)
+// https://stackoverflow.com/questions/21618260/how-to-get-total-size-of-subdirectories-in-c
+static long get_directory_size(char *dirname)
 {
-    printf("    wd =%2d; ", i->wd);
-    if (i->cookie > 0)
-        printf("cookie =%4d; ", i->cookie);
+    DIR *dir = opendir(dirname);
+    if (dir == 0)
+        return 0;
 
-    printf("mask = ");
-    if (i->mask & IN_ACCESS)        printf("IN_ACCESS ");
-    if (i->mask & IN_ATTRIB)        printf("IN_ATTRIB ");
-    if (i->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE ");
-    if (i->mask & IN_CLOSE_WRITE)   printf("IN_CLOSE_WRITE ");
-    if (i->mask & IN_CREATE)        printf("IN_CREATE ");
-    if (i->mask & IN_DELETE)        printf("IN_DELETE ");
-    if (i->mask & IN_DELETE_SELF)   printf("IN_DELETE_SELF ");
-    if (i->mask & IN_IGNORED)       printf("IN_IGNORED ");
-    if (i->mask & IN_ISDIR)         printf("IN_ISDIR ");
-    if (i->mask & IN_MODIFY)        printf("IN_MODIFY ");
-    if (i->mask & IN_MOVE_SELF)     printf("IN_MOVE_SELF ");
-    if (i->mask & IN_MOVED_FROM)    printf("IN_MOVED_FROM ");
-    if (i->mask & IN_MOVED_TO)      printf("IN_MOVED_TO ");
-    if (i->mask & IN_OPEN)          printf("IN_OPEN ");
-    if (i->mask & IN_Q_OVERFLOW)    printf("IN_Q_OVERFLOW ");
-    if (i->mask & IN_UNMOUNT)       printf("IN_UNMOUNT ");
-    printf("\n");
+    struct dirent *dit;
+    struct stat st;
+    long size = 0;
+    long total_size = 0;
+    char filePath[1024];
 
-    if (i->len > 0)
-        printf("        name = %s\n", i->name);
+    while ((dit = readdir(dir)) != NULL) {
+        if ( (strcmp(dit->d_name, ".") == 0) || (strcmp(dit->d_name, "..") == 0) )
+            continue;
+
+        sprintf(filePath, "%s/%s", dirname, dit->d_name);
+        if (lstat(filePath, &st) != 0)
+            continue;
+        size = st.st_size;
+
+        if (S_ISDIR(st.st_mode)) {
+            long dir_size = get_directory_size(filePath) + size;
+            total_size += dir_size;
+        } else {
+            total_size += size;
+        }
+    }
+    return total_size;
 }
 
 
@@ -200,35 +209,30 @@ void *disk_service_thread(void* arg)
 
     printf("%s", s);
 
-
-
-    // 여기에 구현
-
     inotifyFd = inotify_init();                 /* Create inotify instance */
-    wd = inotify_add_watch(inotifyFd, TOY_TEST_FS, IN_ALL_EVENTS);
+    if (inotifyFd == -1)
+        return 0;
 
+    wd = inotify_add_watch(inotifyFd, TOY_TEST_FS, IN_CREATE);
+    if (wd == -1)
+        return 0;
 
-
-    while (1) {
+    for (;;) {                                  /* Read events forever */
         numRead = read(inotifyFd, buf, BUF_LEN);
-        if (numRead == 0)
-            printf("disk service err");
-            break;
+        if (numRead == 0) {
+            printf("read() from inotify fd returned 0!");
+            return 0;
+        }
 
         if (numRead == -1)
-            printf("disk service err");
-            break;
-
-        printf("Read %ld bytes from inotify fd\n", (long) numRead);
-
-        /* Process all of the events in buffer returned by read() */
+            return 0;
 
         for (p = buf; p < buf + numRead; ) {
             event = (struct inotify_event *) p;
-            displayInotifyEvent(event);
-
             p += sizeof(struct inotify_event) + event->len;
         }
+        total_size = get_directory_size(TOY_TEST_FS);
+        printf("directory size: %d\n", total_size);
     }
 
     return 0;
@@ -255,6 +259,10 @@ void *camera_service_thread(void* arg)
         printf("msg.param2: %d\n", msg.param2);
         if (msg.msg_type == CAMERA_TAKE_PICTURE) {
             toy_camera_take_picture();
+        } else if (msg.msg_type == DUMP_STATE) {
+            toy_camera_dump();
+        } else {
+            printf("camera_service_thread: unknown message. xxx\n");
         }
     }
 
