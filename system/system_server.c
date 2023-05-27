@@ -7,6 +7,16 @@
 #include <sys/time.h>
 #include <time.h>
 #include <mqueue.h>
+#include <sys/inotify.h>
+#include <limits.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <sys/sysmacros.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <stdint.h>
+#include <string.h>
+#include <dirent.h>
 
 #include <system_server.h>
 #include <gui.h>
@@ -15,6 +25,9 @@
 #include <camera_HAL.h>
 #include <toy_message.h>
 #include <shared_memory.h>
+
+#define BUF_LEN 1024
+#define TOY_TEST_FS "./fs"
 
 pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  system_loop_cond  = PTHREAD_COND_INITIALIZER;
@@ -143,36 +156,79 @@ void *monitor_thread(void* arg)
     return 0;
 }
 
+static void             /* Display information from inotify_event structure */
+displayInotifyEvent(struct inotify_event *i)
+{
+    printf("    wd =%2d; ", i->wd);
+    if (i->cookie > 0)
+        printf("cookie =%4d; ", i->cookie);
+
+    printf("mask = ");
+    if (i->mask & IN_ACCESS)        printf("IN_ACCESS ");
+    if (i->mask & IN_ATTRIB)        printf("IN_ATTRIB ");
+    if (i->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE ");
+    if (i->mask & IN_CLOSE_WRITE)   printf("IN_CLOSE_WRITE ");
+    if (i->mask & IN_CREATE)        printf("IN_CREATE ");
+    if (i->mask & IN_DELETE)        printf("IN_DELETE ");
+    if (i->mask & IN_DELETE_SELF)   printf("IN_DELETE_SELF ");
+    if (i->mask & IN_IGNORED)       printf("IN_IGNORED ");
+    if (i->mask & IN_ISDIR)         printf("IN_ISDIR ");
+    if (i->mask & IN_MODIFY)        printf("IN_MODIFY ");
+    if (i->mask & IN_MOVE_SELF)     printf("IN_MOVE_SELF ");
+    if (i->mask & IN_MOVED_FROM)    printf("IN_MOVED_FROM ");
+    if (i->mask & IN_MOVED_TO)      printf("IN_MOVED_TO ");
+    if (i->mask & IN_OPEN)          printf("IN_OPEN ");
+    if (i->mask & IN_Q_OVERFLOW)    printf("IN_Q_OVERFLOW ");
+    if (i->mask & IN_UNMOUNT)       printf("IN_UNMOUNT ");
+    printf("\n");
+
+    if (i->len > 0)
+        printf("        name = %s\n", i->name);
+}
+
+
 void *disk_service_thread(void* arg)
 {
     char *s = arg;
-    FILE* apipe;
-    char buf[1024];
-    char cmd[]="df -h ./" ;
-    int mqretcode;
-    toy_msg_t msg;
+    int inotifyFd, wd, j;
+    char buf[BUF_LEN] __attribute__ ((aligned(8)));
+    ssize_t numRead;
+    char *p;
+    struct inotify_event *event;
+    char *directory = TOY_TEST_FS;
+    int total_size;
 
     printf("%s", s);
 
+
+
+    // 여기에 구현
+
+    inotifyFd = inotify_init();                 /* Create inotify instance */
+    wd = inotify_add_watch(inotifyFd, TOY_TEST_FS, IN_ALL_EVENTS);
+
+
+
     while (1) {
-        mqretcode = (int)mq_receive(disk_queue, (void *)&msg, sizeof(toy_msg_t), 0);
-        assert(mqretcode >= 0);
-        printf("disk_service_thread: 메시지가 도착했습니다.\n");
-        printf("msg.type: %d\n", msg.msg_type);
-        printf("msg.param1: %d\n", msg.param1);
-        printf("msg.param2: %d\n", msg.param2);
+        numRead = read(inotifyFd, buf, BUF_LEN);
+        if (numRead == 0)
+            printf("disk service err");
+            break;
 
-        /* popen 사용하여 10초마다 disk 잔여량 출력
-         * popen으로 shell을 실행하면 성능과 보안 문제가 있음
-         * 향후 파일 관련 시스템 콜 시간에 개선,
-         * 하지만 가끔 빠르게 테스트 프로그램 또는 프로토 타입 시스템 작성 시 유용
-         */
-        apipe = popen(cmd, "r");
-        while (fgets( buf, 1024, apipe) ) {
-            printf("%s", buf);
+        if (numRead == -1)
+            printf("disk service err");
+            break;
+
+        printf("Read %ld bytes from inotify fd\n", (long) numRead);
+
+        /* Process all of the events in buffer returned by read() */
+
+        for (p = buf; p < buf + numRead; ) {
+            event = (struct inotify_event *) p;
+            displayInotifyEvent(event);
+
+            p += sizeof(struct inotify_event) + event->len;
         }
-        pclose(apipe);
-
     }
 
     return 0;
