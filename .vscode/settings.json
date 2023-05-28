@@ -14,7 +14,13 @@
         "stdint.h": "c",
         "sysmacros.h": "c",
         "dirent.h": "c",
-        "dump_state.h": "c"
+        "dump_state.h": "c",
+        "atomic": "c",
+        "hardware.h": "c",
+        "camera.h": "c",
+        "*.tcc": "cpp",
+        "fstream": "cpp",
+        "typeinfo": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
