@@ -126,6 +126,43 @@ void *watchdog_thread(void* arg)
     return 0;
 }
 
+int dumpstate()
+{
+    int fd;
+    char buf[BUF_LEN];
+
+    char *arr[] = {
+    "/proc/version",
+    "/proc/meminfo",
+    };
+
+    for(int i = 0 ; i < 2 ; i++)
+    {
+        fd = open(arr[i],O_RDONLY);
+        if(fd == -1)
+        {
+            printf("wrong open in %s\n", arr[i]);
+            return 0;
+        }
+
+        printf("%s is\n", arr[i]);
+
+        while(read(fd, buf, BUF_LEN))
+        {
+            printf("%s", buf);
+            
+        }
+        printf("\n");
+        printf("read is over \n");
+
+        close(fd);
+    }
+
+
+
+    
+}
+
 #define SENSOR_DATA 1
 #define DUMP_STATE 2
 
@@ -154,7 +191,7 @@ void *monitor_thread(void* arg)
             toy_shm_detach(the_sensor_info);
         } else if (msg.msg_type == DUMP_STATE) {
             // 여기에 dumpstate를 구현해 주세요.
-            // dumpstate();
+            dumpstate();
         } else {
             printf("monitor_thread: unknown message. xxx\n");
         }
